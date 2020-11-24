@@ -4,8 +4,11 @@
 The main program, which has two routines for determining optimal play.
 For the discard analyzer, it takes a 6 card hand and whether or not the crib is yours,
 and gives the best discard option. The pegging analyzer takes a 4 card hand and a played card
-(none if the user is playing first i.e. is not the dealer) and tries to give the best play,
-continuing to do so until either all 8 cards have been played or the user exits.
+(none if the user is playing first i.e. is not the dealer) and gives a likely range for opponent,
+continuing to do so until either all 8 cards have been played or the user exits. It should
+be noted that the discard analyzer is more conservative, and thus checks for obvious plays
+before considering average scores across all cuts. In this sense, it's more suited for one-shot
+games rather than a tournament type of setting (multiple-eliminations, best of __ games, etc.).
 """
 
 import crib
@@ -36,16 +39,18 @@ def score(hand):
     fifteens = crib.fifteens(hand, combos)
     run, multiplicity = crib.runs(hand, combos)
     pairs = crib.pairs(hand, combos)
-    flush = crib.suit_flush(hand)
+    flush = crib.suit_flush(hand[0:5])
 
     total += len(fifteens) * 2
     total += len(pairs) * 2
-    total += len(hand) * flush
+    total += 4 * flush
+    if len(hand) == 5:
+        total += crib.suit_flush(hand) # i.e. in-hand flush worth 4, hand + cut flush worth 5
     total += len(run) * multiplicity
 
     return total
 
-def crib_prune(bests):
+def crib_prune(bests, yours):
     """Helper function for discard() which prunes the bests list based on the potential of discarded cards."""
     # first check if the discarded cards of any of the bests give points and adjust their scores accordingly
     # the values ascribed to each type of combination is based on the probability that it scores higher:
@@ -56,7 +61,7 @@ def crib_prune(bests):
     #       add .5 if one card is a jack (since nobs only worth one point, won't be considered a full rank higher)
     # multiply by -1 if crib is opponent's
     multiplier = 1
-    if not crib:
+    if not yours:
         multiplier = -1
     for best in bests:
         if best[1][0].val_to_int() + best[1][1].val_to_int() == 15:
@@ -70,7 +75,7 @@ def crib_prune(bests):
         elif best[1][0].suit == best[1][1].suit:
             best[2] += multiplier
             
-        if best[1][0].value == "J" or best[1][1] == "J":
+        if best[1][0].value == "J" or best[1][1].value == "J":
             best[2] += multiplier * .5
     bests = sorted(bests, key=lambda x: x[2]) # sort by score
     while bests[-1][2] < bests[0][2]:
@@ -80,31 +85,55 @@ def crib_prune(bests):
 
 def cut_prune(bests):
     """Helper function for discard() which prunes bests list based on all possible cuts."""
-    
+    deck = Card.make_deck()
+    # cards in hand (hand + discards for any bests[i]) can't be cuts
+    used = bests[0][0]
+    used.extend(bests[0][1])
+    for card1 in deck:
+        for card2 in used:
+            if card1 == card2:
+                deck.remove(card1)
+
+    for best in bests:
+        average = 0
+        for card in deck:
+            hand = best[0]
+            hand.append(card)
+            average += score(hand)
+            hand.pop()
+        average /= 46.0
+        best[2] = average
+
+    bests = sorted(bests, key=lambda x: x[2])
+    while bests[-1][2] < bests[0][2]:
+        bests.pop()
+
     return bests
 
-def discard(deal, crib=True):
-    """Gives the best discards given a 6 card deal. crib = True means the crib is counted for the hand; False, against the hand."""
-    bests = [] # list of lists: each element is (hand, discards, score)
+def discard(deal, yours):
+    """Gives the best discards given a 6 card deal. yours = True means the crib is counted for the hand; False, against the hand."""
+    bests = [[[], [], 0]] # list of lists: each element is (hand, discards, score)
 
     for i in range(6):
         for j in range(i+1, 6):
-            hand = [card for card in deal if deal.index(card) != i or deal.index(card) != j]
+            hand = [card for card in deal if deal.index(card) != i and deal.index(card) != j]
             points = score(hand)
             if points > bests[0][2]:
                 # clear bests if score is higher and add new hand
-                bests = [[hand, points]]
+                bests = [[hand, [deal[i], deal[j]], points]]
             elif points == bests[0][2]:
-                bests.append([hand, [hand[i], hand[j]], points])
+                bests.append([hand, [deal[i], deal[j]], points])
 
     # now prune bests list as best as possible (note that the score field of each 'best' is now skewed from pruning functions)
     if len(bests) > 1:
-        bests = crib_prune(bests) # first stage of pruning based on possible crib score
+        bests = crib_prune(bests, yours) # first stage of pruning based on possible crib score
     if len(bests) > 1:
         bests = cut_prune(bests) # second stage of pruning based on all possible 5-card hands
-
-def peg(hand, played):
-    """Returns the best card to play given a played card (can be no card); continues analysis until specified or user exits."""
+    
+    print("Recommended hand: ", end=" ")
+    for card in bests[0][0]:
+        print(card, end=" ")
+    print()
 
 def main():
     
@@ -118,15 +147,15 @@ where \"value\" is 'A', 'J', 'Q', 'K', or a number from 2 to 10, and \"suit\" is
     while not done:
         valid = False
         while not valid:
-            mode = input("Choose the phase of play to analyze ((d)iscard, or (p)egging), or (q)uit: ").upper()
-            if mode in ["D", "P", "Q"]:
+            mode = input("(A)nalyze a hand , or (q)uit: ").upper()
+            if mode in ["A","Q"]:
                 valid = True
             else:
-                print("Please enter 'd', 'p', or 'q' ")
+                print("Please enter 'a' or 'q' ")
         if mode == "Q":
             print("Goodbye!")
             done = True
-        elif mode == "D":
+        elif mode == "A":
             hand = input("Enter a six-card hand as a space-separated list: ").split(" ")
             try:
                 hand = [str_to_card(x) for x in hand]
@@ -138,18 +167,5 @@ where \"value\" is 'A', 'J', 'Q', 'K', or a number from 2 to 10, and \"suit\" is
                     discard(hand, True)
                 elif yours[1].upper() == "N":
                     discard(hand, False)
-        elif mode == "P":
-            hand = input("Enter a four-card hand as a space-separated list: ").split(" ")
-            try:
-                hand = [str_to_card(x) for x in hand]
-                played = input("Has the opponent opened with a play?")
-                start = None
-                if played:
-                    start = input("Enter the played card: ")
-                    start = str_to_card(start)
-            except:
-                print("Invalid form for card input (remember: cards are formatted as 'value/suit'")
-            else:
-                peg(hand, start)
 
 main()

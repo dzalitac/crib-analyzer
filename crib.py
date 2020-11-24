@@ -38,6 +38,9 @@ class Card:
     def __str__(self):
         return "[{}|{}]".format(self._value, self._suit)
 
+    def __eq__(self, other):
+        return self.value == other.value and self.suit == other.suit
+
     def same_value(self, other):
         """Returns true when card values are the same."""
         if type(other) != Card:
