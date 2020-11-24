@@ -165,7 +165,7 @@ where \"value\" is 'A', 'J', 'Q', 'K', or a number from 2 to 10, and \"suit\" is
                 yours = input("Is it your crib? (y/n): ")
                 if yours[0].upper() == "Y":
                     discard(hand, True)
-                elif yours[1].upper() == "N":
+                elif yours[0].upper() == "N":
                     discard(hand, False)
 
 main()
