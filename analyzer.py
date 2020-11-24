@@ -164,8 +164,16 @@ where \"value\" is 'A', 'J', 'Q', 'K', or a number from 2 to 10, and \"suit\" is
             else:
                 yours = input("Is it your crib? (y/n): ")
                 if yours[0].upper() == "Y":
-                    discard(hand, True)
+                    try:
+                        discard(hand, True)
+                    except:
+                        print("Something went wrong. Please ensure you entered exactly six cards.")
                 elif yours[0].upper() == "N":
-                    discard(hand, False)
+                    try:
+                        discard(hand, False)
+                    except:
+                        print("Something went wrong. Please ensure you entered exactly six cards.")
+                else:
+                    print("Please enter yes or no when prompted.")
 
 main()
